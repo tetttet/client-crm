@@ -58,6 +58,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
         isDesktopExpanded={isDesktopExpanded}
         isMobileOpen={isMobileOpen}
         onCloseMobile={() => setIsMobileOpen(false)}
+        onExpandDesktop={() => setIsDesktopExpanded(true)}
         onNavigate={handleNavigation}
         pathname={pathname}
       />
@@ -86,8 +87,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
             <IconButton
               aria-label={
                 isDesktop && isDesktopExpanded
-                  ? "Свернуть меню"
-                  : "Открыть меню"
+                  ? "Collapse menu"
+                  : "Open menu"
               }
               color="primary"
               edge="start"
