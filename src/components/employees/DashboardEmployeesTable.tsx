@@ -1,38 +1,32 @@
+import VisibilityRoundedIcon from "@mui/icons-material/VisibilityRounded";
 import Avatar from "@mui/material/Avatar";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import Chip from "@mui/material/Chip";
+import IconButton from "@mui/material/IconButton";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import type { DashboardEmployee } from "@/components/employees/employees-data";
+import { getEmployeeAvatar } from "@/components/employees/employee-utils";
 
 type DashboardEmployeesTableProps = {
   employees: ReadonlyArray<DashboardEmployee>;
   fillHeight?: boolean;
+  onViewEmployee?: (employee: DashboardEmployee) => void;
   viewportHeight?: number;
 };
-
-function getEmployeeAvatar(employee: DashboardEmployee) {
-  if (employee.avatar) {
-    return employee.avatar;
-  }
-
-  return employee.name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 export function DashboardEmployeesTable({
   employees,
   fillHeight = true,
+  onViewEmployee,
   viewportHeight,
 }: DashboardEmployeesTableProps) {
   return (
@@ -95,7 +89,7 @@ export function DashboardEmployeesTable({
         <Table
           size="small"
           sx={{
-            minWidth: 980,
+            minWidth: 1120,
             "& .MuiTableCell-root": {
               py: 1.5,
             },
@@ -117,6 +111,7 @@ export function DashboardEmployeesTable({
               <TableCell>isWorking</TableCell>
               <TableCell>age</TableCell>
               <TableCell>sex</TableCell>
+              <TableCell align="right">view</TableCell>
             </TableRow>
           </TableHead>
 
@@ -132,17 +127,35 @@ export function DashboardEmployeesTable({
                 }}
               >
                 <TableCell>
-                  <Avatar
-                    sx={{
-                      bgcolor: "primary.main",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      height: 36,
-                      width: 36,
-                    }}
-                  >
-                    {getEmployeeAvatar(employee)}
-                  </Avatar>
+                  <Tooltip title="Открыть полный профиль">
+                    <IconButton
+                      aria-label={`Открыть профиль ${employee.name}`}
+                      onClick={() => onViewEmployee?.(employee)}
+                      sx={{
+                        borderRadius: 999,
+                        p: 0,
+                        transition: "transform 160ms ease, box-shadow 160ms ease",
+                        "&:hover": onViewEmployee
+                          ? {
+                              transform: "translateY(-1px)",
+                              boxShadow: 3,
+                            }
+                          : undefined,
+                      }}
+                    >
+                      <Avatar
+                        sx={{
+                          bgcolor: "primary.main",
+                          fontSize: 13,
+                          fontWeight: 700,
+                          height: 36,
+                          width: 36,
+                        }}
+                      >
+                        {getEmployeeAvatar(employee)}
+                      </Avatar>
+                    </IconButton>
+                  </Tooltip>
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
                   {employee.id}
@@ -192,6 +205,16 @@ export function DashboardEmployeesTable({
                       fontWeight: 700,
                     }}
                   />
+                </TableCell>
+                <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                  <Button
+                    endIcon={<VisibilityRoundedIcon fontSize="small" />}
+                    onClick={() => onViewEmployee?.(employee)}
+                    size="small"
+                    variant="text"
+                  >
+                    Просмотреть
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 
 import { CreateEmployeeForm } from "@/components/employees/CreateEmployeeForm";
 import { DashboardEmployeesTable } from "@/components/employees/DashboardEmployeesTable";
+import { EmployeeDetailsDrawer } from "@/components/employees/EmployeeDetailsDrawer";
 import { EmployeesTabPanel } from "@/components/employees/EmployeesTabPanel";
 import {
   dashboardEmployees,
@@ -54,6 +55,8 @@ export function EmployeesTabs() {
   const [tabValue, setTabValue] = useState(0);
   const [employees, setEmployees] =
     useState<ReadonlyArray<DashboardEmployee>>(dashboardEmployees);
+  const [selectedEmployee, setSelectedEmployee] =
+    useState<DashboardEmployee | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleTabChange = (_event: SyntheticEvent, nextValue: number) => {
@@ -146,6 +149,7 @@ export function EmployeesTabs() {
         <DashboardEmployeesTable
           employees={employees}
           fillHeight={false}
+          onViewEmployee={setSelectedEmployee}
           viewportHeight={520}
         />
       </EmployeesTabPanel>
@@ -156,6 +160,12 @@ export function EmployeesTabs() {
           onCreateEmployee={handleCreateEmployee}
         />
       </EmployeesTabPanel>
+
+      <EmployeeDetailsDrawer
+        employee={selectedEmployee}
+        onClose={() => setSelectedEmployee(null)}
+        open={Boolean(selectedEmployee)}
+      />
     </Stack>
   );
 }
