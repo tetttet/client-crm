@@ -1,3 +1,5 @@
 export default function EmployeesPage() {
-  return <div></div>;
+  return <div>
+    hello employees
+  </div>;
 }
