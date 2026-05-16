@@ -38,24 +38,30 @@ import { ProductInventorySection } from "./ProductInventorySection";
 import { ProductMediaUpload } from "./ProductMediaUpload";
 import { ProductSeoSection } from "./ProductSeoSection";
 
-const initialFormValues: ProductFormValues = {
-  title: "",
-  description: "",
-  currency: "USD",
-  price: "",
-  compareAtPrice: "",
-  sku: "",
-  stock: "",
-  category: "",
-  status: "draft",
-  brand: "",
-  weight: "",
-  width: "",
-  height: "",
-  length: "",
-  seoTitle: "",
-  seoDescription: "",
-};
+function createInitialFormValues(): ProductFormValues {
+  return {
+    title: "",
+    description: "",
+    currency: "USD",
+    price: "",
+    compareAtPrice: "",
+    sku: "",
+    stock: "",
+    category: "",
+    status: "draft",
+    brand: "",
+    weight: "",
+    width: "",
+    height: "",
+    length: "",
+    seoTitle: "",
+    seoDescription: "",
+    tags: [],
+    attributes: [],
+    mainImage: null,
+    galleryImages: [],
+  };
+}
 
 const statusOptions: Array<{
   description: string;
@@ -116,12 +122,10 @@ function createEmptyAttribute(): ProductAttribute {
 }
 
 export function ProductCreateForm() {
-  const [values, setValues] = useState<ProductFormValues>(initialFormValues);
-  const [tags, setTags] = useState<string[]>([]);
+  const [values, setValues] = useState<ProductFormValues>(() =>
+    createInitialFormValues(),
+  );
   const [tagInput, setTagInput] = useState("");
-  const [attributes, setAttributes] = useState<ProductAttribute[]>([]);
-  const [mainImage, setMainImage] = useState<ProductImagePreview | null>(null);
-  const [galleryImages, setGalleryImages] = useState<ProductImagePreview[]>([]);
   const [isSnackbarOpen, setIsSnackbarOpen] = useState(false);
   const previewUrlsRef = useRef<string[]>([]);
   const generatedSlug = createProductSlug(values.title);
@@ -159,10 +163,20 @@ export function ProductCreateForm() {
     }));
   };
 
-  const handleAddTag = () => {
-    const nextTags = mergeTags(tags, tagInput);
+  const revokePreviewUrl = (previewUrl: string) => {
+    URL.revokeObjectURL(previewUrl);
+    previewUrlsRef.current = previewUrlsRef.current.filter(
+      (currentPreviewUrl) => currentPreviewUrl !== previewUrl,
+    );
+  };
 
-    setTags(nextTags);
+  const handleAddTag = () => {
+    const nextTags = mergeTags(values.tags, tagInput);
+
+    setValues((currentValues) => ({
+      ...currentValues,
+      tags: nextTags,
+    }));
     setTagInput("");
   };
 
@@ -187,25 +201,20 @@ export function ProductCreateForm() {
     };
   };
 
-  const clearImageState = () => {
-    if (mainImage) {
-      URL.revokeObjectURL(mainImage.previewUrl);
+  const revokeFormImages = (formValues: ProductFormValues) => {
+    if (formValues.mainImage) {
+      revokePreviewUrl(formValues.mainImage.previewUrl);
     }
 
-    galleryImages.forEach((image) => {
-      URL.revokeObjectURL(image.previewUrl);
+    formValues.galleryImages.forEach((image) => {
+      revokePreviewUrl(image.previewUrl);
     });
-
-    setMainImage(null);
-    setGalleryImages([]);
   };
 
   const resetForm = () => {
-    clearImageState();
-    setValues(initialFormValues);
-    setTags([]);
+    revokeFormImages(values);
+    setValues(createInitialFormValues());
     setTagInput("");
-    setAttributes([]);
     setIsSnackbarOpen(false);
   };
 
@@ -218,23 +227,31 @@ export function ProductCreateForm() {
 
     const nextImage = createImagePreview(file);
 
-    setMainImage((currentImage) => {
-      if (currentImage) {
-        URL.revokeObjectURL(currentImage.previewUrl);
+    setValues((currentValues) => {
+      if (currentValues.mainImage) {
+        revokePreviewUrl(currentValues.mainImage.previewUrl);
       }
 
-      return nextImage;
+      return {
+        ...currentValues,
+        mainImage: nextImage,
+      };
     });
 
     event.target.value = "";
   };
 
   const handleRemoveMainImage = () => {
-    if (mainImage) {
-      URL.revokeObjectURL(mainImage.previewUrl);
-    }
+    setValues((currentValues) => {
+      if (currentValues.mainImage) {
+        revokePreviewUrl(currentValues.mainImage.previewUrl);
+      }
 
-    setMainImage(null);
+      return {
+        ...currentValues,
+        mainImage: null,
+      };
+    });
   };
 
   const handleGalleryChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -244,51 +261,64 @@ export function ProductCreateForm() {
       return;
     }
 
-    setGalleryImages((currentImages) => [
-      ...currentImages,
-      ...files.map((file) => createImagePreview(file)),
-    ]);
+    setValues((currentValues) => ({
+      ...currentValues,
+      galleryImages: [
+        ...currentValues.galleryImages,
+        ...files.map((file) => createImagePreview(file)),
+      ],
+    }));
 
     event.target.value = "";
   };
 
   const handleRemoveGalleryImage = (imageId: string) => {
-    setGalleryImages((currentImages) => {
-      const imageToRemove = currentImages.find((image) => image.id === imageId);
+    setValues((currentValues) => {
+      const imageToRemove = currentValues.galleryImages.find(
+        (image) => image.id === imageId,
+      );
 
       if (imageToRemove) {
-        URL.revokeObjectURL(imageToRemove.previewUrl);
+        revokePreviewUrl(imageToRemove.previewUrl);
       }
 
-      return currentImages.filter((image) => image.id !== imageId);
+      return {
+        ...currentValues,
+        galleryImages: currentValues.galleryImages.filter(
+          (image) => image.id !== imageId,
+        ),
+      };
     });
   };
 
   const handleAddAttribute = () => {
-    setAttributes((currentAttributes) => [
-      ...currentAttributes,
-      createEmptyAttribute(),
-    ]);
+    setValues((currentValues) => ({
+      ...currentValues,
+      attributes: [...currentValues.attributes, createEmptyAttribute()],
+    }));
   };
 
   const handleAddPresetAttribute = (key: string) => {
-    setAttributes((currentAttributes) => {
-      const alreadyExists = currentAttributes.some(
+    setValues((currentValues) => {
+      const alreadyExists = currentValues.attributes.some(
         (attribute) => attribute.key.trim().toLowerCase() === key.toLowerCase(),
       );
 
       if (alreadyExists) {
-        return currentAttributes;
+        return currentValues;
       }
 
-      return [
-        ...currentAttributes,
-        {
-          id: createLocalId("attribute"),
-          key,
-          value: "",
-        },
-      ];
+      return {
+        ...currentValues,
+        attributes: [
+          ...currentValues.attributes,
+          {
+            id: createLocalId("attribute"),
+            key,
+            value: "",
+          },
+        ],
+      };
     });
   };
 
@@ -297,8 +327,9 @@ export function ProductCreateForm() {
     field: "key" | "value",
     value: string,
   ) => {
-    setAttributes((currentAttributes) =>
-      currentAttributes.map((attribute) =>
+    setValues((currentValues) => ({
+      ...currentValues,
+      attributes: currentValues.attributes.map((attribute) =>
         attribute.id === attributeId
           ? {
               ...attribute,
@@ -306,19 +337,22 @@ export function ProductCreateForm() {
             }
           : attribute,
       ),
-    );
+    }));
   };
 
   const handleRemoveAttribute = (attributeId: string) => {
-    setAttributes((currentAttributes) =>
-      currentAttributes.filter((attribute) => attribute.id !== attributeId),
-    );
+    setValues((currentValues) => ({
+      ...currentValues,
+      attributes: currentValues.attributes.filter(
+        (attribute) => attribute.id !== attributeId,
+      ),
+    }));
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    const preparedTags = mergeTags(tags, tagInput);
+    const preparedTags = mergeTags(values.tags, tagInput);
     const productPayload: ProductPayload = {
       title: values.title.trim(),
       description: values.description.trim(),
@@ -346,23 +380,29 @@ export function ProductCreateForm() {
         description: values.seoDescription.trim(),
       },
       images: {
-        mainImage: mainImage?.file ?? null,
-        gallery: galleryImages.map((image) => image.file),
+        mainImage: values.mainImage?.file ?? null,
+        gallery: values.galleryImages.map((image) => image.file),
       },
-      attributes: attributes.reduce<Record<string, string>>((result, attribute) => {
-        const key = attribute.key.trim();
+      attributes: values.attributes.reduce<Record<string, string>>(
+        (result, attribute) => {
+          const key = attribute.key.trim();
 
-        if (!key) {
+          if (!key) {
+            return result;
+          }
+
+          result[key] = attribute.value.trim();
           return result;
-        }
-
-        result[key] = attribute.value.trim();
-        return result;
-      }, {}),
+        },
+        {},
+      ),
     };
 
     console.log("Created product:", productPayload);
-    setTags(preparedTags);
+    setValues((currentValues) => ({
+      ...currentValues,
+      tags: preparedTags,
+    }));
     setTagInput("");
     setIsSnackbarOpen(true);
   };
@@ -464,8 +504,8 @@ export function ProductCreateForm() {
                 </Paper>
 
                 <ProductMediaUpload
-                  galleryImages={galleryImages}
-                  mainImage={mainImage}
+                  galleryImages={values.galleryImages}
+                  mainImage={values.mainImage}
                   onGalleryChange={handleGalleryChange}
                   onMainImageChange={handleMainImageChange}
                   onRemoveGalleryImage={handleRemoveGalleryImage}
@@ -473,7 +513,7 @@ export function ProductCreateForm() {
                 />
 
                 <ProductAttributesEditor
-                  attributes={attributes}
+                  attributes={values.attributes}
                   onAddAttribute={handleAddAttribute}
                   onAddPresetAttribute={handleAddPresetAttribute}
                   onAttributeChange={handleAttributeChange}
@@ -742,22 +782,23 @@ export function ProductCreateForm() {
                           </Button>
                         </Stack>
 
-                        {tags.length > 0 ? (
+                        {values.tags.length > 0 ? (
                           <Stack
                             direction="row"
                             spacing={1}
                             sx={{ flexWrap: "wrap", gap: 1 }}
                           >
-                            {tags.map((tag) => (
+                            {values.tags.map((tag) => (
                               <Chip
                                 key={tag}
                                 label={tag}
                                 onDelete={() =>
-                                  setTags((currentTags) =>
-                                    currentTags.filter(
+                                  setValues((currentValues) => ({
+                                    ...currentValues,
+                                    tags: currentValues.tags.filter(
                                       (currentTag) => currentTag !== tag,
                                     ),
-                                  )
+                                  }))
                                 }
                                 sx={chipSx}
                                 variant="outlined"
