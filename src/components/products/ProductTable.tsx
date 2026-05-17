@@ -263,7 +263,7 @@ export default function ProductTable() {
     const timerId = window.setTimeout(() => {
       setProducts(createProductsMock());
       setIsBootstrapping(false);
-    }, 340);
+    }, 0);
 
     return () => {
       window.clearTimeout(timerId);
