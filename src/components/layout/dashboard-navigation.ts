@@ -1,16 +1,18 @@
 import HomeRoundedIcon from "@mui/icons-material/HomeRounded";
 import type { SvgIconComponent } from "@mui/icons-material";
 import AddBoxRoundedIcon from "@mui/icons-material/AddBoxRounded";
+import AccountBalanceWalletRoundedIcon from "@mui/icons-material/AccountBalanceWalletRounded";
 import ApiRoundedIcon from "@mui/icons-material/ApiRounded";
+import BusinessRoundedIcon from "@mui/icons-material/BusinessRounded";
 import CategoryRoundedIcon from "@mui/icons-material/CategoryRounded";
 import DescriptionRoundedIcon from "@mui/icons-material/DescriptionRounded";
 import FormatListBulletedRoundedIcon from "@mui/icons-material/FormatListBulletedRounded";
-import PeopleAltOutlinedIcon from "@mui/icons-material/PeopleAltOutlined";
+import Inventory2RoundedIcon from "@mui/icons-material/Inventory2Rounded";
+import PeopleRoundedIcon from "@mui/icons-material/PeopleRounded";
+import ReceiptLongRoundedIcon from "@mui/icons-material/ReceiptLongRounded";
 import SettingsRoundedIcon from "@mui/icons-material/SettingsRounded";
-import StickyNote2OutlinedIcon from "@mui/icons-material/StickyNote2Outlined";
-import AccountBalanceIcon from "@mui/icons-material/AccountBalance";
-import MarkUnreadChatAltIcon from "@mui/icons-material/MarkUnreadChatAlt";
-import DriveFileMoveIcon from "@mui/icons-material/DriveFileMove";
+import SmartToyRoundedIcon from "@mui/icons-material/SmartToyRounded";
+import StickyNote2RoundedIcon from "@mui/icons-material/StickyNote2Rounded";
 
 import { storageRoutes } from "@/features/storage/storage-routes";
 
@@ -35,12 +37,12 @@ export const dashboardNavigationItems: DashboardNavigationItem[] = [
   },
   {
     href: "/dashboard/employees",
-    icon: PeopleAltOutlinedIcon,
+    icon: PeopleRoundedIcon,
     label: "Employees",
   },
   {
     href: storageRoutes.root,
-    icon: DriveFileMoveIcon,
+    icon: Inventory2RoundedIcon,
     label: "Inventory",
     subItems: [
       {
@@ -76,18 +78,28 @@ export const dashboardNavigationItems: DashboardNavigationItem[] = [
     ],
   },
   {
+    href: "/dashboard/orders",
+    icon: ReceiptLongRoundedIcon,
+    label: "Orders",
+  },
+  {
     href: "/dashboard/finance",
-    icon: AccountBalanceIcon,
+    icon: AccountBalanceWalletRoundedIcon,
     label: "Finance",
   },
   {
     href: "/dashboard/notes",
-    icon: StickyNote2OutlinedIcon,
+    icon: StickyNote2RoundedIcon,
     label: "Notes",
   },
   {
+    href: "/dashboard/company",
+    icon: BusinessRoundedIcon,
+    label: "Company Page",
+  },
+  {
     href: "/dashboard/chatbot",
-    icon: MarkUnreadChatAltIcon,
+    icon: SmartToyRoundedIcon,
     label: "Chatbot",
   },
 ];
