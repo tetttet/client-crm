@@ -37,6 +37,13 @@ import { ProductAttributesEditor } from "./ProductAttributesEditor";
 import { ProductInventorySection } from "./ProductInventorySection";
 import { ProductMediaUpload } from "./ProductMediaUpload";
 import { ProductSeoSection } from "./ProductSeoSection";
+import { createProductsMock } from "@/components/products/products.mock";
+
+const categoryOptions = Array.from(
+  new Set(createProductsMock().map((product) => product.category)),
+).sort((leftCategory, rightCategory) =>
+  leftCategory.localeCompare(rightCategory),
+);
 
 function createInitialFormValues(): ProductFormValues {
   return {
@@ -160,6 +167,13 @@ export function ProductCreateForm() {
     setValues((currentValues) => ({
       ...currentValues,
       currency: event.target.value as ProductCurrency,
+    }));
+  };
+
+  const handleCategoryChange = (event: SelectChangeEvent<string>) => {
+    setValues((currentValues) => ({
+      ...currentValues,
+      category: event.target.value,
     }));
   };
 
@@ -741,14 +755,30 @@ export function ProductCreateForm() {
                     <Divider />
 
                     <Stack spacing={2}>
-                      <TextField
-                        fullWidth
-                        label="Category"
-                        onChange={handleValueChange("category")}
-                        required
-                        sx={fieldSx}
-                        value={values.category}
-                      />
+                      <FormControl fullWidth required>
+                        <InputLabel id="product-category-label">
+                          Category
+                        </InputLabel>
+                        <Select
+                          label="Category"
+                          labelId="product-category-label"
+                          onChange={handleCategoryChange}
+                          sx={{
+                            bgcolor: "#ffffff",
+                            borderRadius: "2px",
+                          }}
+                          value={values.category}
+                        >
+                          <MenuItem disabled value="">
+                            Select category
+                          </MenuItem>
+                          {categoryOptions.map((category) => (
+                            <MenuItem key={category} value={category}>
+                              {category}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                       <TextField
                         fullWidth
                         label="Brand / manufacturer"
