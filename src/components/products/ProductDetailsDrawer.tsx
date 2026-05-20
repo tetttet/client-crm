@@ -2,6 +2,7 @@
 
 import { useState, type ChangeEvent } from "react";
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -28,7 +29,7 @@ import type { ProductItem, ProductStatus } from "./product.types";
 
 type ProductDetailsDrawerProps = Readonly<{
   onClose: () => void;
-  onSave: (product: ProductItem) => void;
+  onSave: (product: ProductItem) => Promise<void> | void;
   open: boolean;
   product: ProductItem | null;
 }>;
@@ -130,6 +131,8 @@ export function ProductDetailsDrawer({
 }: ProductDetailsDrawerProps) {
   const [draftProduct, setDraftProduct] = useState<ProductItem | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleFieldChange = <Key extends keyof ProductItem>(
     field: Key,
@@ -231,23 +234,44 @@ export function ProductDetailsDrawer({
   };
 
   const handleCancel = () => {
+    if (isSaving) {
+      return;
+    }
+
     setDraftProduct(null);
     setIsEditing(false);
+    setSaveError(null);
   };
 
   const handleClose = () => {
+    if (isSaving) {
+      return;
+    }
+
     handleCancel();
     onClose();
   };
 
-  const handleSave = () => {
-    if (!draftProduct) {
+  const handleSave = async () => {
+    if (!draftProduct || isSaving) {
       return;
     }
 
-    onSave(cloneProduct(draftProduct));
-    setDraftProduct(null);
-    setIsEditing(false);
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      await onSave(cloneProduct(draftProduct));
+      setDraftProduct(null);
+      setIsEditing(false);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "Failed to save product.",
+      );
+      return;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!product) {
@@ -297,6 +321,7 @@ export function ProductDetailsDrawer({
 
             <IconButton
               aria-label="Close product details"
+              disabled={isSaving}
               onClick={handleClose}
               sx={{
                 border: "1px solid #e5e7eb",
@@ -323,49 +348,63 @@ export function ProductDetailsDrawer({
                 Images
               </Typography>
 
-              <Box
-                sx={{
-                  display: "grid",
-                  gap: 1.25,
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                }}
-              >
-                {currentProduct.images.map((image, index) => (
-                  <Stack
-                    key={`${currentProduct.id}-image-${index + 1}`}
-                    spacing={1}
-                    sx={{
-                      border: "1px solid #e5e7eb",
-                      p: 1,
-                    }}
-                  >
-                    <Box
-                      alt={`${currentProduct.title} image ${index + 1}`}
-                      component="img"
-                      src={image}
+              {currentProduct.images.length > 0 ? (
+                <Box
+                  sx={{
+                    display: "grid",
+                    gap: 1.25,
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  {currentProduct.images.map((image, index) => (
+                    <Stack
+                      key={`${currentProduct.id}-image-${index + 1}`}
+                      spacing={1}
                       sx={{
-                        aspectRatio: "1 / 1",
-                        display: "block",
-                        objectFit: "cover",
-                        width: "100%",
+                        border: "1px solid #e5e7eb",
+                        p: 1,
                       }}
-                    />
-
-                    {isEditing ? (
-                      <TextField
-                        fullWidth
-                        label={`Image URL ${index + 1}`}
-                        onChange={(event) =>
-                          handleImageChange(index, event.target.value)
-                        }
-                        size="small"
-                        sx={fieldSx}
-                        value={image}
+                    >
+                      <Box
+                        alt={`${currentProduct.title} image ${index + 1}`}
+                        component="img"
+                        src={image}
+                        sx={{
+                          aspectRatio: "1 / 1",
+                          display: "block",
+                          objectFit: "cover",
+                          width: "100%",
+                        }}
                       />
-                    ) : null}
-                  </Stack>
-                ))}
-              </Box>
+
+                      {isEditing ? (
+                        <TextField
+                          fullWidth
+                          label={`Image URL ${index + 1}`}
+                          onChange={(event) =>
+                            handleImageChange(index, event.target.value)
+                          }
+                          size="small"
+                          sx={fieldSx}
+                          value={image}
+                        />
+                      ) : null}
+                    </Stack>
+                  ))}
+                </Box>
+              ) : (
+                <Box
+                  sx={{
+                    border: "1px dashed #d7dce3",
+                    px: 1.5,
+                    py: 2,
+                  }}
+                >
+                  <Typography color="text.secondary" variant="body2">
+                    No image URLs are stored for this product yet.
+                  </Typography>
+                </Box>
+              )}
             </Stack>
 
             {isEditing ? (
@@ -493,17 +532,17 @@ export function ProductDetailsDrawer({
                   <TextField
                     fullWidth
                     label="Created date"
-                    onChange={(event) =>
-                      handleFieldChange("createdAt", event.target.value)
-                    }
                     slotProps={{
+                      input: {
+                        readOnly: true,
+                      },
                       inputLabel: {
                         shrink: true,
                       },
                     }}
                     sx={fieldSx}
                     type="date"
-                    value={currentProduct.createdAt}
+                    value={currentProduct.createdAt.slice(0, 10)}
                   />
                   <TextField
                     fullWidth
@@ -718,63 +757,77 @@ export function ProductDetailsDrawer({
               </Typography>
 
               {isEditing ? (
-                <Stack spacing={1.25}>
-                  {currentProduct.characteristics.map((characteristic) => (
-                    <Box
-                      key={characteristic.id}
-                      sx={{
-                        display: "grid",
-                        gap: 1.25,
-                        gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
-                      }}
-                    >
-                      <TextField
-                        fullWidth
-                        label="Attribute"
-                        onChange={(event) =>
-                          handleCharacteristicChange(
-                            characteristic.id,
-                            "label",
-                            event.target.value,
-                          )
-                        }
-                        size="small"
-                        sx={fieldSx}
-                        value={characteristic.label}
-                      />
-                      <TextField
-                        fullWidth
-                        label="Value"
-                        onChange={(event) =>
-                          handleCharacteristicChange(
-                            characteristic.id,
-                            "value",
-                            event.target.value,
-                          )
-                        }
-                        size="small"
-                        sx={fieldSx}
+                currentProduct.characteristics.length > 0 ? (
+                  <Stack spacing={1.25}>
+                    {currentProduct.characteristics.map((characteristic) => (
+                      <Box
+                        key={characteristic.id}
+                        sx={{
+                          display: "grid",
+                          gap: 1.25,
+                          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
+                        }}
+                      >
+                        <TextField
+                          fullWidth
+                          label="Attribute"
+                          onChange={(event) =>
+                            handleCharacteristicChange(
+                              characteristic.id,
+                              "label",
+                              event.target.value,
+                            )
+                          }
+                          size="small"
+                          sx={fieldSx}
+                          value={characteristic.label}
+                        />
+                        <TextField
+                          fullWidth
+                          label="Value"
+                          onChange={(event) =>
+                            handleCharacteristicChange(
+                              characteristic.id,
+                              "value",
+                              event.target.value,
+                            )
+                          }
+                          size="small"
+                          sx={fieldSx}
+                          value={characteristic.value}
+                        />
+                      </Box>
+                    ))}
+                  </Stack>
+                ) : (
+                  <ProductDetailItem
+                    label="Specifications"
+                    value="No specifications stored for this product."
+                  />
+                )
+              ) : (
+                currentProduct.characteristics.length > 0 ? (
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gap: 1.25,
+                      gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
+                    }}
+                  >
+                    {currentProduct.characteristics.map((characteristic) => (
+                      <ProductDetailItem
+                        key={characteristic.id}
+                        label={characteristic.label}
                         value={characteristic.value}
                       />
-                    </Box>
-                  ))}
-                </Stack>
-              ) : (
-                <Box
-                  sx={{
-                    display: "grid",
-                    gap: 1.25,
-                    gridTemplateColumns: { xs: "1fr", sm: "repeat(2, minmax(0, 1fr))" },
-                  }}
-                >
-                  {currentProduct.characteristics.map((characteristic) => (
-                    <ProductDetailItem
-                      key={characteristic.id}
-                      label={characteristic.label}
-                      value={characteristic.value}
-                    />
-                  ))}
-                </Box>
+                    ))}
+                  </Box>
+                ) : (
+                  <ProductDetailItem
+                    label="Specifications"
+                    value="No specifications stored for this product."
+                  />
+                )
               )}
             </Stack>
           </Stack>
@@ -787,11 +840,18 @@ export function ProductDetailsDrawer({
             py: 2,
           }}
         >
+          {saveError ? (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {saveError}
+            </Alert>
+          ) : null}
+
           <Stack direction="row" spacing={1.25} sx={{ justifyContent: "flex-end" }}>
             {isEditing ? (
               <>
                 <Button
                   disableElevation
+                  disabled={isSaving}
                   onClick={handleCancel}
                   sx={secondaryButtonSx}
                   variant="outlined"
@@ -800,11 +860,12 @@ export function ProductDetailsDrawer({
                 </Button>
                 <Button
                   disableElevation
+                  disabled={isSaving}
                   onClick={handleSave}
                   sx={primaryButtonSx}
                   variant="contained"
                 >
-                  Save
+                  {isSaving ? "Saving..." : "Save"}
                 </Button>
               </>
             ) : (
@@ -813,6 +874,7 @@ export function ProductDetailsDrawer({
                 onClick={() => {
                   setDraftProduct(cloneProduct(product));
                   setIsEditing(true);
+                  setSaveError(null);
                 }}
                 sx={primaryButtonSx}
                 variant="contained"

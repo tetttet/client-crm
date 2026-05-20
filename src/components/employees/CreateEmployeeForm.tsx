@@ -13,38 +13,43 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import type {
-  DashboardEmployee,
-  DashboardEmployeeSex,
-} from "@/components/employees/employees-data";
+  CreateEmployeeBody,
+  EmployeeRole,
+  EmployeeSex,
+} from "@/lib/api/types/employee.types";
 
 type CreateEmployeeFormProps = Readonly<{
-  onCreateEmployee: (employee: Omit<DashboardEmployee, "id">) => void;
+  isSubmitting?: boolean;
+  onCreateEmployee: (employee: CreateEmployeeBody) => Promise<void> | void;
   onCancel: () => void;
 }>;
 
 type CreateEmployeeValues = {
   age: string;
-  date: string;
   email: string;
   isWorking: boolean;
   name: string;
+  password: string;
   phone: string;
-  role: string;
-  sex: DashboardEmployeeSex;
+  role: EmployeeRole;
+  sex: EmployeeSex;
+  startDate: string;
 };
 
 const initialValues: CreateEmployeeValues = {
   age: "",
-  date: "",
   email: "",
   isWorking: true,
   name: "",
+  password: "",
   phone: "",
-  role: "",
-  sex: "Female",
+  role: "user",
+  sex: "female",
+  startDate: "",
 };
 
 export function CreateEmployeeForm({
+  isSubmitting = false,
   onCreateEmployee,
   onCancel,
 }: CreateEmployeeFormProps) {
@@ -62,34 +67,41 @@ export function CreateEmployeeForm({
       }));
     };
 
-  const handleSexChange = (event: SelectChangeEvent<DashboardEmployeeSex>) => {
+  const handleRoleChange = (event: SelectChangeEvent<EmployeeRole>) => {
     setValues((currentValues) => ({
       ...currentValues,
-      sex: event.target.value as DashboardEmployeeSex,
+      role: event.target.value as EmployeeRole,
     }));
   };
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSexChange = (event: SelectChangeEvent<EmployeeSex>) => {
+    setValues((currentValues) => ({
+      ...currentValues,
+      sex: event.target.value as EmployeeSex,
+    }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    onCreateEmployee({
-      age: Number(values.age),
-      avatar: values.name
-        .split(" ")
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0]?.toUpperCase() ?? "")
-        .join(""),
-      date: values.date,
-      email: values.email.trim(),
-      isWorking: values.isWorking,
-      name: values.name.trim(),
-      phone: values.phone.trim(),
-      role: values.role.trim(),
-      sex: values.sex,
-    });
+    try {
+      await onCreateEmployee({
+        age: Number(values.age),
+        avatarUrl: null,
+        email: values.email.trim(),
+        isWorking: values.isWorking,
+        name: values.name.trim(),
+        password: values.password,
+        phone: values.phone.trim(),
+        role: values.role,
+        sex: values.sex,
+        startDate: values.startDate,
+      });
 
-    setValues(initialValues);
+      setValues(initialValues);
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -148,6 +160,7 @@ export function CreateEmployeeForm({
           }}
         >
           <TextField
+            disabled={isSubmitting}
             fullWidth
             label="Full name"
             name="name"
@@ -156,6 +169,7 @@ export function CreateEmployeeForm({
             value={values.name}
           />
           <TextField
+            disabled={isSubmitting}
             fullWidth
             label="Email"
             name="email"
@@ -165,6 +179,7 @@ export function CreateEmployeeForm({
             value={values.email}
           />
           <TextField
+            disabled={isSubmitting}
             fullWidth
             label="Phone"
             name="phone"
@@ -173,14 +188,17 @@ export function CreateEmployeeForm({
             value={values.phone}
           />
           <TextField
+            disabled={isSubmitting}
             fullWidth
-            label="Role"
-            name="role"
-            onChange={handleChange("role")}
+            label="Password"
+            name="password"
+            onChange={handleChange("password")}
             required
-            value={values.role}
+            type="password"
+            value={values.password}
           />
           <TextField
+            disabled={isSubmitting}
             fullWidth
             label="Age"
             name="age"
@@ -191,25 +209,41 @@ export function CreateEmployeeForm({
             value={values.age}
           />
           <TextField
+            disabled={isSubmitting}
             fullWidth
             label="Start date"
-            name="date"
-            onChange={handleChange("date")}
+            name="startDate"
+            onChange={handleChange("startDate")}
             required
             slotProps={{ inputLabel: { shrink: true } }}
             type="date"
-            value={values.date}
+            value={values.startDate}
           />
+          <FormControl fullWidth>
+            <InputLabel id="employee-role-label">Role</InputLabel>
+            <Select
+              disabled={isSubmitting}
+              label="Role"
+              labelId="employee-role-label"
+              onChange={handleRoleChange}
+              value={values.role}
+            >
+              <MenuItem value="admin">Admin</MenuItem>
+              <MenuItem value="manager">Manager</MenuItem>
+              <MenuItem value="user">User</MenuItem>
+            </Select>
+          </FormControl>
           <FormControl fullWidth>
             <InputLabel id="employee-sex-label">Sex</InputLabel>
             <Select
+              disabled={isSubmitting}
               label="Sex"
               labelId="employee-sex-label"
               onChange={handleSexChange}
               value={values.sex}
             >
-              <MenuItem value="Female">Female</MenuItem>
-              <MenuItem value="Male">Male</MenuItem>
+              <MenuItem value="female">Female</MenuItem>
+              <MenuItem value="male">Male</MenuItem>
             </Select>
           </FormControl>
 
@@ -238,6 +272,7 @@ export function CreateEmployeeForm({
               control={
                 <Switch
                   checked={values.isWorking}
+                  disabled={isSubmitting}
                   onChange={handleChange("isWorking")}
                 />
               }
@@ -253,11 +288,16 @@ export function CreateEmployeeForm({
           spacing={1.5}
           sx={{ justifyContent: "flex-end" }}
         >
-          <Button color="inherit" onClick={onCancel} variant="outlined">
+          <Button
+            color="inherit"
+            disabled={isSubmitting}
+            onClick={onCancel}
+            variant="outlined"
+          >
             К таблице
           </Button>
-          <Button type="submit" variant="contained">
-            Создать пользователя
+          <Button disabled={isSubmitting} type="submit" variant="contained">
+            {isSubmitting ? "Создаём..." : "Создать пользователя"}
           </Button>
         </Stack>
       </Stack>

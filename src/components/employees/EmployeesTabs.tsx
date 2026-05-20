@@ -18,60 +18,42 @@ import { DashboardEmployeesTable } from "@/components/employees/DashboardEmploye
 import { EmployeeDetailsDrawer } from "@/components/employees/EmployeeDetailsDrawer";
 import { EmployeesTabPanel } from "@/components/employees/EmployeesTabPanel";
 import {
-  dashboardEmployees,
+  mapEmployeeToDashboardEmployee,
   type DashboardEmployee,
 } from "@/components/employees/employees-data";
-
-function formatEmployeeDate(dateValue: string) {
-  const date = new Date(dateValue);
-
-  if (Number.isNaN(date.getTime())) {
-    return dateValue;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
-}
-
-function getNextEmployeeId(employees: ReadonlyArray<DashboardEmployee>) {
-  const nextEmployeeNumber =
-    employees.reduce((maxValue, employee) => {
-      const employeeNumber = Number.parseInt(employee.id.replace("EMP-", ""), 10);
-
-      if (Number.isNaN(employeeNumber)) {
-        return maxValue;
-      }
-
-      return Math.max(maxValue, employeeNumber);
-    }, 1000) + 1;
-
-  return `EMP-${nextEmployeeNumber}`;
-}
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { useEmployees } from "@/hooks/use-employees";
+import type { CreateEmployeeBody } from "@/lib/api/types/employee.types";
 
 export function EmployeesTabs() {
+  const session = useAuthSession();
+  const {
+    createEmployee,
+    employees: employeeRecords,
+    error,
+    isLoading,
+    isMutating,
+    total,
+  } = useEmployees();
   const [tabValue, setTabValue] = useState(0);
-  const [employees, setEmployees] =
-    useState<ReadonlyArray<DashboardEmployee>>(dashboardEmployees);
   const [selectedEmployee, setSelectedEmployee] =
     useState<DashboardEmployee | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const employees = employeeRecords.map(mapEmployeeToDashboardEmployee);
+  const canCreateEmployees =
+    session.authType === "company" ||
+    (session.authType === "employee" &&
+      (session.employeeRole === "admin" || session.employeeRole === "manager"));
+  const totalEmployees = total || employees.length;
 
   const handleTabChange = (_event: SyntheticEvent, nextValue: number) => {
     setTabValue(nextValue);
     setSuccessMessage(null);
   };
 
-  const handleCreateEmployee = (employee: Omit<DashboardEmployee, "id">) => {
-    const createdEmployee: DashboardEmployee = {
-      ...employee,
-      date: formatEmployeeDate(employee.date),
-      id: getNextEmployeeId(employees),
-    };
-
-    setEmployees((currentEmployees) => [createdEmployee, ...currentEmployees]);
+  const handleCreateEmployee = async (employee: CreateEmployeeBody) => {
+    const response = await createEmployee(employee);
+    const createdEmployee = mapEmployeeToDashboardEmployee(response.employee);
     setSuccessMessage(
       `${createdEmployee.name} добавлен(а) в таблицу сотрудников.`,
     );
@@ -113,7 +95,7 @@ export function EmployeesTabs() {
 
             <Chip
               color="primary"
-              label={`${employees.length} всего`}
+              label={`${totalEmployees} всего`}
               size="small"
               sx={{ borderRadius: 999, fontWeight: 700 }}
             />
@@ -134,6 +116,7 @@ export function EmployeesTabs() {
             />
             <Tab
               icon={<PersonAddAlt1RoundedIcon fontSize="small" />}
+              disabled={!canCreateEmployees}
               iconPosition="start"
               id="employees-tab-1"
               label="Создать Сотрудника"
@@ -144,21 +127,38 @@ export function EmployeesTabs() {
       </Card>
 
       {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
+      {!session.accessToken ? (
+        <Alert severity="warning">
+          Чтобы увидеть реальную таблицу сотрудников, сначала войди в компанию
+          или под сотрудником.
+        </Alert>
+      ) : null}
+      {error ? <Alert severity="error">{error.message}</Alert> : null}
 
       <EmployeesTabPanel index={0} value={tabValue}>
         <DashboardEmployeesTable
           employees={employees}
+          emptyMessage="Сервер пока не вернул сотрудников для этой компании."
           fillHeight={false}
+          isLoading={isLoading}
           onViewEmployee={setSelectedEmployee}
           viewportHeight={520}
         />
       </EmployeesTabPanel>
 
       <EmployeesTabPanel index={1} value={tabValue}>
-        <CreateEmployeeForm
-          onCancel={() => setTabValue(0)}
-          onCreateEmployee={handleCreateEmployee}
-        />
+        {canCreateEmployees ? (
+          <CreateEmployeeForm
+            isSubmitting={isMutating}
+            onCancel={() => setTabValue(0)}
+            onCreateEmployee={handleCreateEmployee}
+          />
+        ) : (
+          <Alert severity="info">
+            Создание сотрудников доступно компании, а также ролям admin и
+            manager.
+          </Alert>
+        )}
       </EmployeesTabPanel>
 
       <EmployeeDetailsDrawer

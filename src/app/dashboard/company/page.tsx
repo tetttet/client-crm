@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import AddOutlinedIcon from "@mui/icons-material/AddOutlined";
 import ArrowDownwardOutlinedIcon from "@mui/icons-material/ArrowDownwardOutlined";
@@ -32,46 +32,41 @@ import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
+import { createProductSlug } from "@/features/storage/create-product/lib/slug";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { useCompanyPage } from "@/hooks/use-company-page";
+import { toApiError } from "@/lib/api/api-error";
+import type {
+  CompanyPage as ApiCompanyPage,
+  CompanyPageAdvantage,
+  CompanyPageBlockId,
+  CompanyPageFaqItem,
+  CompanyPageMediaAsset,
+  CompanyPageService,
+  CompanyPageSocialLink,
+  CompanyPageStatus,
+  CreateCompanyPageBody,
+  UpdateMyCompanyPageBody,
+} from "@/lib/api/types/company-page.types";
+
 type MediaAsset = {
   fileName: string;
   id: string;
+  isObjectUrl: boolean;
+  persistedAsset: CompanyPageMediaAsset | null;
   previewUrl: string;
   size: number;
 };
 
-type SocialLink = {
-  id: string;
-  platform: string;
-  url: string;
-};
+type SocialLink = CompanyPageSocialLink;
 
-type ServiceItem = {
-  description: string;
-  id: string;
-  name: string;
-  price: string;
-};
+type ServiceItem = CompanyPageService;
 
-type AdvantageItem = {
-  description: string;
-  id: string;
-  title: string;
-};
+type AdvantageItem = CompanyPageAdvantage;
 
-type FaqItem = {
-  answer: string;
-  id: string;
-  question: string;
-};
+type FaqItem = CompanyPageFaqItem;
 
-type BlockId =
-  | "hero"
-  | "about"
-  | "services"
-  | "gallery"
-  | "advantages"
-  | "faq"
-  | "contacts";
+type BlockId = CompanyPageBlockId;
 
 type CompanyPageState = {
   aboutText: string;
@@ -94,8 +89,11 @@ type CompanyPageState = {
   name: string;
   phone: string;
   services: ServiceItem[];
+  settings: Record<string, unknown>;
   shortDescription: string;
+  slug: string;
   socialLinks: SocialLink[];
+  status: CompanyPageStatus;
   website: string;
   workingHours: string;
 };
@@ -103,7 +101,7 @@ type CompanyPageState = {
 type SnackbarState = {
   message: string;
   open: boolean;
-  severity: "info" | "success";
+  severity: "error" | "info" | "success" | "warning";
 };
 
 type EditorSectionProps = Readonly<{
@@ -142,6 +140,22 @@ const categoryOptions = [
   "Logistics",
   "Hospitality",
   "Professional services",
+];
+
+const companyPageStatuses: CompanyPageStatus[] = [
+  "draft",
+  "published",
+  "archived",
+];
+
+const defaultBlocks: BlockId[] = [
+  "hero",
+  "about",
+  "services",
+  "gallery",
+  "advantages",
+  "faq",
+  "contacts",
 ];
 
 const blockDefinitions: Array<{
@@ -285,6 +299,9 @@ function createInitialState(): CompanyPageState {
     website: "",
     address: "",
     workingHours: "",
+    slug: "",
+    status: "draft",
+    settings: {},
     socialLinks: [],
     brandColor: "#1f4e79",
     logo: null,
@@ -297,19 +314,15 @@ function createInitialState(): CompanyPageState {
     faqItems: [],
     ctaLabel: "",
     ctaNote: "",
-    blocks: [
-      "hero",
-      "about",
-      "services",
-      "gallery",
-      "advantages",
-      "faq",
-      "contacts",
-    ],
+    blocks: [...defaultBlocks],
   };
 }
 
 function formatFileSize(fileSize: number) {
+  if (fileSize <= 0) {
+    return "Saved on server";
+  }
+
   if (fileSize >= 1024 * 1024) {
     return `${(fileSize / (1024 * 1024)).toFixed(1)} MB`;
   }
@@ -328,6 +341,210 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
 
 function getFallbackValue(value: string, fallback: string) {
   return value.trim() || fallback;
+}
+
+function toNullableValue(value: string) {
+  const trimmedValue = value.trim();
+  return trimmedValue ? trimmedValue : null;
+}
+
+function formatStatusLabel(status: CompanyPageStatus) {
+  return `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
+}
+
+function getResolvedSlug(state: Pick<CompanyPageState, "name" | "slug">) {
+  const explicitSlug = state.slug.trim().toLowerCase();
+
+  if (explicitSlug) {
+    return explicitSlug;
+  }
+
+  const trimmedName = state.name.trim();
+  return trimmedName ? createProductSlug(trimmedName) : "";
+}
+
+function getPreviewSlug(state: Pick<CompanyPageState, "name" | "slug">) {
+  return getResolvedSlug(state) || "company-page";
+}
+
+function createRemoteMediaAsset(asset: CompanyPageMediaAsset): MediaAsset {
+  return {
+    fileName: asset.fileName,
+    id: asset.id,
+    isObjectUrl: false,
+    persistedAsset: { ...asset },
+    previewUrl: asset.publicUrl,
+    size: asset.size,
+  };
+}
+
+function cloneMediaAsset(asset: MediaAsset | null): MediaAsset | null {
+  if (!asset) {
+    return null;
+  }
+
+  return {
+    ...asset,
+    persistedAsset: asset.persistedAsset ? { ...asset.persistedAsset } : null,
+  };
+}
+
+function clonePageState(state: CompanyPageState): CompanyPageState {
+  return {
+    ...state,
+    advantages: state.advantages.map((advantage) => ({ ...advantage })),
+    blocks: [...state.blocks],
+    coverImage: cloneMediaAsset(state.coverImage),
+    faqItems: state.faqItems.map((faqItem) => ({ ...faqItem })),
+    galleryImages: state.galleryImages.map(
+      (image) => cloneMediaAsset(image) as MediaAsset,
+    ),
+    logo: cloneMediaAsset(state.logo),
+    services: state.services.map((service) => ({ ...service })),
+    settings: { ...state.settings },
+    socialLinks: state.socialLinks.map((socialLink) => ({ ...socialLink })),
+  };
+}
+
+function serializeMediaAsset(asset: MediaAsset | null) {
+  return asset?.persistedAsset ? { ...asset.persistedAsset } : null;
+}
+
+function mapCompanyPageToState(companyPage: ApiCompanyPage): CompanyPageState {
+  return {
+    aboutText: companyPage.aboutText,
+    aboutTitle: companyPage.aboutTitle,
+    address: companyPage.address,
+    advantages: companyPage.advantages.map((advantage) => ({ ...advantage })),
+    blocks:
+      companyPage.blocks.length > 0
+        ? [...companyPage.blocks]
+        : [...defaultBlocks],
+    brandColor: companyPage.brandColor,
+    category: companyPage.category,
+    city: companyPage.city,
+    country: companyPage.country,
+    coverImage: companyPage.coverImage
+      ? createRemoteMediaAsset(companyPage.coverImage)
+      : null,
+    ctaLabel: companyPage.ctaLabel,
+    ctaNote: companyPage.ctaNote,
+    email: companyPage.email ?? "",
+    faqItems: companyPage.faqItems.map((faqItem) => ({ ...faqItem })),
+    fullDescription: companyPage.fullDescription,
+    galleryImages: companyPage.galleryImages.map(createRemoteMediaAsset),
+    logo: companyPage.logo ? createRemoteMediaAsset(companyPage.logo) : null,
+    name: companyPage.name,
+    phone: companyPage.phone,
+    services: companyPage.services.map((service) => ({ ...service })),
+    settings: { ...companyPage.settings },
+    shortDescription: companyPage.shortDescription,
+    slug: companyPage.slug ?? "",
+    socialLinks: companyPage.socialLinks.map((socialLink) => ({
+      ...socialLink,
+    })),
+    status: companyPage.status,
+    website: companyPage.website ?? "",
+    workingHours: companyPage.workingHours,
+  };
+}
+
+function buildCompanyPagePayload(
+  pageState: CompanyPageState,
+): CreateCompanyPageBody | UpdateMyCompanyPageBody {
+  return {
+    aboutText: pageState.aboutText.trim(),
+    aboutTitle: pageState.aboutTitle.trim(),
+    address: pageState.address.trim(),
+    advantages: pageState.advantages.map((advantage) => ({
+      description: advantage.description.trim(),
+      id: advantage.id,
+      title: advantage.title.trim(),
+    })),
+    blocks: [...pageState.blocks],
+    brandColor: pageState.brandColor,
+    category: pageState.category.trim(),
+    city: pageState.city.trim(),
+    country: pageState.country.trim(),
+    coverImage: serializeMediaAsset(pageState.coverImage),
+    ctaLabel: pageState.ctaLabel.trim(),
+    ctaNote: pageState.ctaNote.trim(),
+    email: toNullableValue(pageState.email),
+    faqItems: pageState.faqItems.map((faqItem) => ({
+      answer: faqItem.answer.trim(),
+      id: faqItem.id,
+      question: faqItem.question.trim(),
+    })),
+    fullDescription: pageState.fullDescription.trim(),
+    galleryImages: pageState.galleryImages
+      .map((image) => serializeMediaAsset(image))
+      .filter((image): image is CompanyPageMediaAsset => image !== null),
+    logo: serializeMediaAsset(pageState.logo),
+    name: pageState.name.trim(),
+    phone: pageState.phone.trim(),
+    services: pageState.services.map((service) => ({
+      description: service.description.trim(),
+      id: service.id,
+      name: service.name.trim(),
+      price: service.price.trim(),
+    })),
+    settings: { ...pageState.settings },
+    shortDescription: pageState.shortDescription.trim(),
+    slug: getResolvedSlug(pageState) || null,
+    socialLinks: pageState.socialLinks.map((socialLink) => ({
+      id: socialLink.id,
+      platform: socialLink.platform.trim(),
+      url: socialLink.url.trim(),
+    })),
+    status: pageState.status,
+    website: toNullableValue(pageState.website),
+    workingHours: pageState.workingHours.trim(),
+  };
+}
+
+function getValidationMessage(pageState: CompanyPageState) {
+  if (!pageState.name.trim()) {
+    return "Company name is required.";
+  }
+
+  if (pageState.status === "published" && !getResolvedSlug(pageState)) {
+    return "Add a slug or company name before publishing.";
+  }
+
+  if (pageState.services.some((service) => !service.name.trim())) {
+    return "Each service card needs a name before saving.";
+  }
+
+  if (pageState.advantages.some((advantage) => !advantage.title.trim())) {
+    return "Each advantage card needs a title before saving.";
+  }
+
+  if (
+    pageState.faqItems.some(
+      (faqItem) => !faqItem.question.trim() || !faqItem.answer.trim(),
+    )
+  ) {
+    return "Each FAQ item needs both a question and an answer.";
+  }
+
+  if (
+    pageState.socialLinks.some(
+      (socialLink) =>
+        !socialLink.platform.trim() || !socialLink.url.trim(),
+    )
+  ) {
+    return "Each social link needs both a platform and a URL.";
+  }
+
+  return null;
+}
+
+function hasLocalOnlyMedia(pageState: CompanyPageState) {
+  return Boolean(
+    pageState.logo?.isObjectUrl ||
+      pageState.coverImage?.isObjectUrl ||
+      pageState.galleryImages.some((image) => image.isObjectUrl),
+  );
 }
 
 function EditorSection({
@@ -509,6 +726,7 @@ function CompanyPagePreview({
   data: CompanyPageState;
 }>) {
   const previewName = getFallbackValue(data.name, "Company name");
+  const previewSlug = getPreviewSlug(data);
   const previewShortDescription = getFallbackValue(
     data.shortDescription,
     "Add a short description to introduce the company in the hero section.",
@@ -990,12 +1208,12 @@ function CompanyPagePreview({
             Published page preview
           </Typography>
           <Typography color="text.secondary" variant="caption">
-            company.example.com/{previewName.toLowerCase().replace(/\s+/g, "-")}
+            company.example.com/{previewSlug}
           </Typography>
         </Stack>
 
         <Chip
-          label="Draft view"
+          label={`${formatStatusLabel(data.status)} view`}
           sx={{
             border: "1px solid",
             borderColor: "divider",
@@ -1029,6 +1247,20 @@ function CompanyPagePreview({
 }
 
 export default function CompanyPage() {
+  const session = useAuthSession();
+  const isCompanySession =
+    session.authType === "company" && Boolean(session.accessToken);
+  const {
+    companyPage,
+    createCompanyPage,
+    error,
+    isLoading,
+    isMutating,
+    updateMyCompanyPage,
+  } = useCompanyPage({
+    autoLoad: true,
+    enabled: isCompanySession,
+  });
   const [activeTab, setActiveTab] = useState(0);
   const [blocksTab, setBlocksTab] = useState(0);
   const [pageState, setPageState] = useState<CompanyPageState>(() =>
@@ -1041,6 +1273,18 @@ export default function CompanyPage() {
   });
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewUrlsRef = useRef<string[]>([]);
+  const savedPageStateRef = useRef<CompanyPageState>(createInitialState());
+  const hasExistingCompanyPage = Boolean(companyPage?.id);
+  const pageStatusLabel = formatStatusLabel(pageState.status);
+  const hasPendingLocalMedia = hasLocalOnlyMedia(pageState);
+  const saveButtonLabel =
+    pageState.status === "published"
+      ? hasExistingCompanyPage
+        ? "Update page"
+        : "Publish page"
+      : pageState.status === "archived"
+        ? "Save archived page"
+        : "Save draft";
 
   useEffect(() => {
     const previewUrls = previewUrlsRef;
@@ -1051,6 +1295,81 @@ export default function CompanyPage() {
       });
     };
   }, []);
+
+  const revokePreviewUrl = useCallback((previewUrl: string) => {
+    URL.revokeObjectURL(previewUrl);
+    previewUrlsRef.current = previewUrlsRef.current.filter(
+      (currentPreviewUrl) => currentPreviewUrl !== previewUrl,
+    );
+  }, []);
+
+  const revokeMediaAssetPreview = useCallback(
+    (asset: MediaAsset | null) => {
+      if (!asset?.isObjectUrl) {
+        return;
+      }
+
+      revokePreviewUrl(asset.previewUrl);
+    },
+    [revokePreviewUrl],
+  );
+
+  const revokePageStateAssets = useCallback(
+    (state: CompanyPageState) => {
+      revokeMediaAssetPreview(state.logo);
+      revokeMediaAssetPreview(state.coverImage);
+      state.galleryImages.forEach((image) => {
+        revokeMediaAssetPreview(image);
+      });
+    },
+    [revokeMediaAssetPreview],
+  );
+
+  const replacePageState = useCallback(
+    (nextState: CompanyPageState) => {
+      setPageState((currentState) => {
+        revokePageStateAssets(currentState);
+        return clonePageState(nextState);
+      });
+    },
+    [revokePageStateAssets],
+  );
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const syncPageState = (nextState: CompanyPageState) => {
+      savedPageStateRef.current = clonePageState(nextState);
+
+      queueMicrotask(() => {
+        if (!isCancelled) {
+          replacePageState(nextState);
+        }
+      });
+    };
+
+    if (!isCompanySession) {
+      syncPageState(createInitialState());
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    if (companyPage) {
+      syncPageState(mapCompanyPageToState(companyPage));
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    if (!isLoading) {
+      syncPageState(createInitialState());
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [companyPage, isCompanySession, isLoading, replacePageState]);
 
   const handleFieldChange =
     (
@@ -1080,6 +1399,15 @@ export default function CompanyPage() {
       }));
     };
 
+  const handleSlugChange = (
+    event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    setPageState((currentState) => ({
+      ...currentState,
+      slug: event.target.value,
+    }));
+  };
+
   const handleCategoryChange = (event: SelectChangeEvent<string>) => {
     setPageState((currentState) => ({
       ...currentState,
@@ -1087,7 +1415,17 @@ export default function CompanyPage() {
     }));
   };
 
-  const createMediaAsset = (file: File): MediaAsset => {
+  const handleStatusChange = (event: SelectChangeEvent<string>) => {
+    setPageState((currentState) => ({
+      ...currentState,
+      status: event.target.value as CompanyPageStatus,
+    }));
+  };
+
+  const createMediaAsset = (
+    file: File,
+    persistedAsset: CompanyPageMediaAsset | null = null,
+  ): MediaAsset => {
     const previewUrl = URL.createObjectURL(file);
 
     previewUrlsRef.current.push(previewUrl);
@@ -1095,16 +1433,11 @@ export default function CompanyPage() {
     return {
       id: createLocalId("media"),
       fileName: file.name,
+      isObjectUrl: true,
+      persistedAsset,
       previewUrl,
       size: file.size,
     };
-  };
-
-  const revokePreviewUrl = (previewUrl: string) => {
-    URL.revokeObjectURL(previewUrl);
-    previewUrlsRef.current = previewUrlsRef.current.filter(
-      (currentPreviewUrl) => currentPreviewUrl !== previewUrl,
-    );
   };
 
   const handleLogoChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1114,16 +1447,12 @@ export default function CompanyPage() {
       return;
     }
 
-    const nextLogo = createMediaAsset(file);
-
     setPageState((currentState) => {
-      if (currentState.logo) {
-        revokePreviewUrl(currentState.logo.previewUrl);
-      }
+      revokeMediaAssetPreview(currentState.logo);
 
       return {
         ...currentState,
-        logo: nextLogo,
+        logo: createMediaAsset(file, currentState.logo?.persistedAsset ?? null),
       };
     });
 
@@ -1137,16 +1466,15 @@ export default function CompanyPage() {
       return;
     }
 
-    const nextCover = createMediaAsset(file);
-
     setPageState((currentState) => {
-      if (currentState.coverImage) {
-        revokePreviewUrl(currentState.coverImage.previewUrl);
-      }
+      revokeMediaAssetPreview(currentState.coverImage);
 
       return {
         ...currentState,
-        coverImage: nextCover,
+        coverImage: createMediaAsset(
+          file,
+          currentState.coverImage?.persistedAsset ?? null,
+        ),
       };
     });
 
@@ -1172,9 +1500,7 @@ export default function CompanyPage() {
 
   const handleRemoveLogo = () => {
     setPageState((currentState) => {
-      if (currentState.logo) {
-        revokePreviewUrl(currentState.logo.previewUrl);
-      }
+      revokeMediaAssetPreview(currentState.logo);
 
       return {
         ...currentState,
@@ -1185,9 +1511,7 @@ export default function CompanyPage() {
 
   const handleRemoveCover = () => {
     setPageState((currentState) => {
-      if (currentState.coverImage) {
-        revokePreviewUrl(currentState.coverImage.previewUrl);
-      }
+      revokeMediaAssetPreview(currentState.coverImage);
 
       return {
         ...currentState,
@@ -1203,7 +1527,7 @@ export default function CompanyPage() {
       );
 
       if (imageToRemove) {
-        revokePreviewUrl(imageToRemove.previewUrl);
+        revokeMediaAssetPreview(imageToRemove);
       }
 
       return {
@@ -1349,25 +1673,14 @@ export default function CompanyPage() {
   };
 
   const handleReset = () => {
-    setPageState((currentState) => {
-      const assetsToRevoke = [
-        currentState.logo,
-        currentState.coverImage,
-        ...currentState.galleryImages,
-      ].filter(Boolean);
-
-      assetsToRevoke.forEach((asset) => {
-        revokePreviewUrl((asset as MediaAsset).previewUrl);
-      });
-
-      return createInitialState();
-    });
-
+    replacePageState(savedPageStateRef.current);
     setActiveTab(0);
     setBlocksTab(0);
     setSnackbarState({
       open: true,
-      message: "The builder was reset to an empty draft.",
+      message: hasExistingCompanyPage
+        ? "Unsaved changes were discarded."
+        : "The builder was reset to an empty draft.",
       severity: "info",
     });
   };
@@ -1379,12 +1692,56 @@ export default function CompanyPage() {
     });
   };
 
-  const handlePublishDemo = () => {
-    setSnackbarState({
-      open: true,
-      message: "Demo publish simulated. Nothing was saved or sent to a server.",
-      severity: "success",
-    });
+  const handleSaveCompanyPage = async () => {
+    if (!isCompanySession) {
+      setSnackbarState({
+        open: true,
+        message:
+          "Company token is required to create or update the company page.",
+        severity: "warning",
+      });
+      return;
+    }
+
+    const validationMessage = getValidationMessage(pageState);
+
+    if (validationMessage) {
+      setSnackbarState({
+        open: true,
+        message: validationMessage,
+        severity: "error",
+      });
+      return;
+    }
+
+    const payload = buildCompanyPagePayload(pageState);
+
+    try {
+      if (hasExistingCompanyPage) {
+        await updateMyCompanyPage(payload);
+      } else {
+        await createCompanyPage(payload);
+      }
+
+      setSnackbarState({
+        open: true,
+        message: hasPendingLocalMedia
+          ? "Company page saved on server. Newly uploaded files stay local until media upload is connected."
+          : "Company page saved on server.",
+        severity: "success",
+      });
+    } catch (requestError) {
+      const apiError = toApiError(
+        requestError,
+        "Failed to save company page.",
+      );
+
+      setSnackbarState({
+        open: true,
+        message: apiError.message,
+        severity: "error",
+      });
+    }
   };
 
   const renderBlocksPanel = () => (
@@ -1822,7 +2179,7 @@ export default function CompanyPage() {
                     Company Page Builder
                   </Typography>
                   <Chip
-                    label="Draft"
+                    label={pageStatusLabel}
                     sx={{
                       border: "1px solid",
                       borderColor: "divider",
@@ -1834,9 +2191,9 @@ export default function CompanyPage() {
                   />
                 </Stack>
                 <Typography color="text.secondary" variant="body2">
-                  Configure company content on the left and review the published
-                  layout instantly on the right. All state is local to this
-                  page.
+                  Configure company content on the left, save it to your company
+                  page in the database, and review the published layout
+                  instantly on the right.
                 </Typography>
               </Stack>
 
@@ -1858,6 +2215,7 @@ export default function CompanyPage() {
                   disableElevation
                   onClick={handleReset}
                   startIcon={<RestartAltOutlinedIcon fontSize="small" />}
+                  disabled={isLoading || isMutating}
                   sx={buttonSx}
                   variant="outlined"
                 >
@@ -1865,7 +2223,8 @@ export default function CompanyPage() {
                 </Button>
                 <Button
                   disableElevation
-                  onClick={handlePublishDemo}
+                  disabled={!isCompanySession || isLoading || isMutating}
+                  onClick={handleSaveCompanyPage}
                   startIcon={<PublishOutlinedIcon fontSize="small" />}
                   sx={{
                     ...buttonSx,
@@ -1879,10 +2238,50 @@ export default function CompanyPage() {
                   }}
                   variant="contained"
                 >
-                  Publish demo
+                  {isMutating ? "Saving..." : saveButtonLabel}
                 </Button>
               </Stack>
             </Stack>
+
+            {!isCompanySession ? (
+              <Alert
+                severity="warning"
+                sx={{
+                  borderRadius: 0,
+                  boxShadow: "none",
+                }}
+                variant="outlined"
+              >
+                Sign in with a company account to load and save the company
+                page through `/api/company-pages/me`.
+              </Alert>
+            ) : null}
+
+            {error ? (
+              <Alert
+                severity="error"
+                sx={{
+                  borderRadius: 0,
+                  boxShadow: "none",
+                }}
+                variant="outlined"
+              >
+                {error.message}
+              </Alert>
+            ) : null}
+
+            {isCompanySession && isLoading ? (
+              <Alert
+                severity="info"
+                sx={{
+                  borderRadius: 0,
+                  boxShadow: "none",
+                }}
+                variant="outlined"
+              >
+                Loading the saved company page from the server.
+              </Alert>
+            ) : null}
 
             <Divider />
 
@@ -1991,10 +2390,25 @@ export default function CompanyPage() {
 
             <TabPanel index={1} value={activeTab}>
               <EditorSection
-                description="Upload a logo, a cover image, and supporting gallery visuals. Files stay in local state only."
+                description="Saved media already stored on the server appears here. New file uploads preview locally until a dedicated upload API is connected."
                 title="Media assets"
               >
                 <Stack spacing={3}>
+                  {hasPendingLocalMedia ? (
+                    <Alert
+                      severity="info"
+                      sx={{
+                        borderRadius: 0,
+                        boxShadow: "none",
+                      }}
+                      variant="outlined"
+                    >
+                      Uploaded files are previewed locally. Saving the page
+                      keeps the current server media until upload endpoints are
+                      connected.
+                    </Alert>
+                  ) : null}
+
                   <SingleAssetUpload
                     asset={pageState.logo}
                     buttonLabel="Upload logo"
@@ -2155,7 +2569,7 @@ export default function CompanyPage() {
                   <Grid size={{ xs: 12 }}>
                     <TextField
                       fullWidth
-                      helperText="Stored as text only for now. No validation or request is triggered."
+                      helperText="The server normalizes the website value when the page is saved."
                       label="Website"
                       onChange={handleFieldChange("website")}
                       sx={fieldSx}
@@ -2277,10 +2691,37 @@ export default function CompanyPage() {
 
             <TabPanel index={4} value={activeTab}>
               <EditorSection
-                description="Control the primary accent and the message around the main CTA."
+                description="Control the public slug, page status, accent color, and the message around the main CTA."
                 title="Brand settings"
               >
                 <Grid columnSpacing={1.5} container rowSpacing={1.5}>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <TextField
+                      fullWidth
+                      helperText="Used for the public route. If left blank, it is generated from the company name."
+                      label="Public slug"
+                      onChange={handleSlugChange}
+                      sx={fieldSx}
+                      value={pageState.slug}
+                    />
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        label="Status"
+                        onChange={handleStatusChange}
+                        sx={fieldSx}
+                        value={pageState.status}
+                      >
+                        {companyPageStatuses.map((status) => (
+                          <MenuItem key={status} value={status}>
+                            {formatStatusLabel(status)}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
                   <Grid size={{ xs: 12, md: 4 }}>
                     <TextField
                       fullWidth
@@ -2344,11 +2785,11 @@ export default function CompanyPage() {
               </EditorSection>
 
               <EditorSection
-                description="This screen is intentionally frontend-only. Nothing is persisted, cached, or sent anywhere."
-                title="Demo status"
+                description="The editor now reads from and writes to the current company page on the server."
+                title="Persistence"
               >
                 <Alert
-                  severity="info"
+                  severity={isCompanySession ? "info" : "warning"}
                   sx={{
                     borderRadius: 0,
                     boxShadow: "none",
@@ -2360,12 +2801,14 @@ export default function CompanyPage() {
                 >
                   <Stack spacing={0.5}>
                     <Typography sx={{ fontWeight: 600 }} variant="body2">
-                      Local draft mode
+                      {isCompanySession
+                        ? "Server-backed company page"
+                        : "Company access required"}
                     </Typography>
                     <Typography variant="body2">
-                      Use Preview to jump to the live page mockup, Reset to
-                      clear the draft, and Publish demo to simulate a future
-                      publish action without real API calls.
+                      {isCompanySession
+                        ? "Reset restores the last state loaded from the server. Saving creates or updates `/api/company-pages/me` for the current company."
+                        : "Open this page under a company token to create or update the company page in the database."}
                     </Typography>
                   </Stack>
                 </Alert>
@@ -2390,11 +2833,16 @@ export default function CompanyPage() {
                 Live preview
               </Typography>
               <Typography color="text.secondary" variant="body2">
-                The preview refreshes immediately as the editor changes.
+                The preview refreshes immediately as the editor changes and
+                reflects the server data after each save.
               </Typography>
             </Stack>
             <Typography color="text.secondary" variant="caption">
-              Frontend-only demo state
+              {hasExistingCompanyPage
+                ? "Loaded from server"
+                : isCompanySession
+                  ? "Will be created on first save"
+                  : "Company token required"}
             </Typography>
           </Stack>
         </Paper>

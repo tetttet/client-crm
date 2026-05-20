@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import KeyboardArrowDownRoundedIcon from "@mui/icons-material/KeyboardArrowDownRounded";
 import KeyboardArrowRightRoundedIcon from "@mui/icons-material/KeyboardArrowRightRounded";
+import LogoutRoundedIcon from "@mui/icons-material/LogoutRounded";
 import Box from "@mui/material/Box";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
@@ -25,6 +26,7 @@ type SidebarProps = {
   isMobileOpen: boolean;
   onCloseMobile: () => void;
   onExpandDesktop: () => void;
+  onLogout: () => void;
   onNavigate: () => void;
   pathname: string;
 };
@@ -38,6 +40,7 @@ export function Sidebar({
   isMobileOpen,
   onCloseMobile,
   onExpandDesktop,
+  onLogout,
   onNavigate,
   pathname,
 }: SidebarProps) {
@@ -148,6 +151,7 @@ export function Sidebar({
 
       <List
         disablePadding
+        sx={{ flex: 1, overflowY: "auto", py: 1 }}
       >
         {dashboardNavigationItems.map((item) => {
           const hasSubItems = Boolean(item.subItems?.length);
@@ -268,6 +272,57 @@ export function Sidebar({
           );
         })}
       </List>
+
+      <Box sx={{ p: collapsed ? 1 : 1.5 }}>
+        <Divider sx={{ mb: 1.5 }} />
+        <Tooltip
+          arrow
+          disableHoverListener={!collapsed}
+          placement="right"
+          title="Выйти"
+        >
+          <ListItemButton
+            onClick={onLogout}
+            sx={{
+              alignItems: "center",
+              borderRadius: 0,
+              color: "#a61b29",
+              gap: collapsed ? 0 : 1.25,
+              justifyContent: collapsed ? "center" : "flex-start",
+              minHeight: 20,
+              px: collapsed ? 0 : 1.5,
+              py: 0.75,
+              "&:hover": {
+                backgroundColor: alpha("#d93025", 0.08),
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                color: "inherit",
+                justifyContent: "center",
+                minWidth: collapsed ? 0 : 36,
+              }}
+            >
+              <LogoutRoundedIcon fontSize="small" />
+            </ListItemIcon>
+            {!collapsed ? (
+              <ListItemText
+                primary={
+                  <Typography
+                    sx={{
+                      fontSize: 14,
+                      fontWeight: 500,
+                    }}
+                  >
+                    Выйти
+                  </Typography>
+                }
+              />
+            ) : null}
+          </ListItemButton>
+        </Tooltip>
+      </Box>
     </Box>
   );
 

@@ -18,14 +18,18 @@ import { getEmployeeAvatar } from "@/components/employees/employee-utils";
 
 type DashboardEmployeesTableProps = {
   employees: ReadonlyArray<DashboardEmployee>;
+  emptyMessage?: string;
   fillHeight?: boolean;
+  isLoading?: boolean;
   onViewEmployee?: (employee: DashboardEmployee) => void;
   viewportHeight?: number;
 };
 
 export function DashboardEmployeesTable({
   employees,
+  emptyMessage = "Сотрудники ещё не добавлены.",
   fillHeight = true,
+  isLoading = false,
   onViewEmployee,
   viewportHeight,
 }: DashboardEmployeesTableProps) {
@@ -116,108 +120,127 @@ export function DashboardEmployeesTable({
           </TableHead>
 
           <TableBody>
-            {employees.map((employee) => (
-              <TableRow
-                hover
-                key={employee.id}
-                sx={{
-                  "&:last-child .MuiTableCell-root": {
-                    borderBottom: 0,
-                  },
-                }}
-              >
-                <TableCell>
-                  <Tooltip title="Открыть полный профиль">
-                    <IconButton
-                      aria-label={`Открыть профиль ${employee.name}`}
-                      onClick={() => onViewEmployee?.(employee)}
-                      sx={{
-                        borderRadius: 999,
-                        p: 0,
-                        transition: "transform 160ms ease, box-shadow 160ms ease",
-                        "&:hover": onViewEmployee
-                          ? {
-                              transform: "translateY(-1px)",
-                              boxShadow: 3,
-                            }
-                          : undefined,
-                      }}
-                    >
-                      <Avatar
-                        sx={{
-                          bgcolor: "primary.main",
-                          fontSize: 13,
-                          fontWeight: 700,
-                          height: 36,
-                          width: 36,
-                        }}
-                      >
-                        {getEmployeeAvatar(employee)}
-                      </Avatar>
-                    </IconButton>
-                  </Tooltip>
-                </TableCell>
-                <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
-                  {employee.id}
-                </TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  {employee.name}
-                </TableCell>
-                <TableCell
-                  sx={{ color: "text.secondary", whiteSpace: "nowrap" }}
-                >
-                  {employee.email}
-                </TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  {employee.phone}
-                </TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  <Chip
-                    label={employee.role}
-                    size="small"
-                    variant="outlined"
-                    sx={{ borderRadius: 999, fontWeight: 600 }}
-                  />
-                </TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  {employee.date}
-                </TableCell>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  <Chip
-                    color={employee.isWorking ? "success" : "default"}
-                    label={employee.isWorking ? "Active" : "Offline"}
-                    size="small"
-                    sx={{ borderRadius: 999, fontWeight: 700 }}
-                  />
-                </TableCell>
-                <TableCell>{employee.age}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={employee.sex}
-                    size="small"
-                    sx={{
-                      borderRadius: 999,
-                      bgcolor:
-                        employee.sex === "Female"
-                          ? "rgba(244, 114, 182, 0.12)"
-                          : "rgba(96, 165, 250, 0.14)",
-                      color: employee.sex === "Female" ? "#be185d" : "#1d4ed8",
-                      fontWeight: 700,
-                    }}
-                  />
-                </TableCell>
-                <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
-                  <Button
-                    endIcon={<VisibilityRoundedIcon fontSize="small" />}
-                    onClick={() => onViewEmployee?.(employee)}
-                    size="small"
-                    variant="text"
-                  >
-                    Просмотреть
-                  </Button>
+            {isLoading ? (
+              <TableRow>
+                <TableCell align="center" colSpan={11}>
+                  <Typography color="text.secondary" variant="body2">
+                    Загружаем сотрудников...
+                  </Typography>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : employees.length === 0 ? (
+              <TableRow>
+                <TableCell align="center" colSpan={11}>
+                  <Typography color="text.secondary" variant="body2">
+                    {emptyMessage}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ) : (
+              employees.map((employee) => (
+                <TableRow
+                  hover
+                  key={employee.id}
+                  sx={{
+                    "&:last-child .MuiTableCell-root": {
+                      borderBottom: 0,
+                    },
+                  }}
+                >
+                  <TableCell>
+                    <Tooltip title="Открыть полный профиль">
+                      <IconButton
+                        aria-label={`Открыть профиль ${employee.name}`}
+                        onClick={() => onViewEmployee?.(employee)}
+                        sx={{
+                          borderRadius: 999,
+                          p: 0,
+                          transition: "transform 160ms ease, box-shadow 160ms ease",
+                          "&:hover": onViewEmployee
+                            ? {
+                                transform: "translateY(-1px)",
+                                boxShadow: 3,
+                              }
+                            : undefined,
+                        }}
+                      >
+                        <Avatar
+                          src={employee.avatarUrl ?? undefined}
+                          sx={{
+                            bgcolor: "primary.main",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            height: 36,
+                            width: 36,
+                          }}
+                        >
+                          {getEmployeeAvatar(employee)}
+                        </Avatar>
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 600, whiteSpace: "nowrap" }}>
+                    {employee.id}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {employee.name}
+                  </TableCell>
+                  <TableCell
+                    sx={{ color: "text.secondary", whiteSpace: "nowrap" }}
+                  >
+                    {employee.email}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {employee.phone}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <Chip
+                      label={employee.role}
+                      size="small"
+                      variant="outlined"
+                      sx={{ borderRadius: 999, fontWeight: 600 }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    {employee.date}
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: "nowrap" }}>
+                    <Chip
+                      color={employee.isWorking ? "success" : "default"}
+                      label={employee.isWorking ? "Active" : "Offline"}
+                      size="small"
+                      sx={{ borderRadius: 999, fontWeight: 700 }}
+                    />
+                  </TableCell>
+                  <TableCell>{employee.age}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={employee.sex}
+                      size="small"
+                      sx={{
+                        borderRadius: 999,
+                        bgcolor:
+                          employee.sex === "Female"
+                            ? "rgba(244, 114, 182, 0.12)"
+                            : "rgba(96, 165, 250, 0.14)",
+                        color: employee.sex === "Female" ? "#be185d" : "#1d4ed8",
+                        fontWeight: 700,
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                    <Button
+                      endIcon={<VisibilityRoundedIcon fontSize="small" />}
+                      onClick={() => onViewEmployee?.(employee)}
+                      size="small"
+                      variant="text"
+                    >
+                      Просмотреть
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Box>

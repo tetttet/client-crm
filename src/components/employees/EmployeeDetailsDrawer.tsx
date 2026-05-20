@@ -133,6 +133,7 @@ export function EmployeeDetailsDrawer({
                 sx={{ alignItems: "flex-start" }}
               >
                 <Avatar
+                  src={employee.avatarUrl ?? undefined}
                   sx={{
                     bgcolor: "primary.main",
                     width: 72,

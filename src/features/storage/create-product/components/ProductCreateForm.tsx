@@ -30,16 +30,18 @@ import type {
   ProductCurrency,
   ProductFormValues,
   ProductImagePreview,
-  ProductPayload,
   ProductStatus,
 } from "../types";
 import { ProductAttributesEditor } from "./ProductAttributesEditor";
 import { ProductInventorySection } from "./ProductInventorySection";
 import { ProductMediaUpload } from "./ProductMediaUpload";
 import { ProductSeoSection } from "./ProductSeoSection";
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { useProducts } from "@/hooks/use-products";
+import type { CreateProductBody } from "@/lib/api/types/product.types";
 import { createProductsMock } from "@/components/products/products.mock";
 
-const categoryOptions = Array.from(
+const fallbackCategoryOptions = Array.from(
   new Set(createProductsMock().map((product) => product.category)),
 ).sort((leftCategory, rightCategory) =>
   leftCategory.localeCompare(rightCategory),
@@ -129,6 +131,17 @@ function createEmptyAttribute(): ProductAttribute {
 }
 
 export function ProductCreateForm() {
+  const session = useAuthSession();
+  const {
+    createProduct,
+    error,
+    isMutating,
+    products,
+  } = useProducts({
+    initialQuery: {
+      limit: 100,
+    },
+  });
   const [values, setValues] = useState<ProductFormValues>(() =>
     createInitialFormValues(),
   );
@@ -136,6 +149,17 @@ export function ProductCreateForm() {
   const [isSnackbarOpen, setIsSnackbarOpen] = useState(false);
   const previewUrlsRef = useRef<string[]>([]);
   const generatedSlug = createProductSlug(values.title);
+  const hasSession = Boolean(session.accessToken);
+  const categoryOptions = Array.from(
+    new Set([
+      ...fallbackCategoryOptions,
+      ...products
+        .map((product) => product.category.trim())
+        .filter((category) => category.length > 0),
+    ]),
+  ).sort((leftCategory, rightCategory) =>
+    leftCategory.localeCompare(rightCategory),
+  );
 
   useEffect(() => {
     const previewUrls = previewUrlsRef;
@@ -225,11 +249,18 @@ export function ProductCreateForm() {
     });
   };
 
-  const resetForm = () => {
+  const clearFormState = (closeSnackbar = true) => {
     revokeFormImages(values);
     setValues(createInitialFormValues());
     setTagInput("");
-    setIsSnackbarOpen(false);
+
+    if (closeSnackbar) {
+      setIsSnackbarOpen(false);
+    }
+  };
+
+  const resetForm = () => {
+    clearFormState();
   };
 
   const handleMainImageChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -363,62 +394,57 @@ export function ProductCreateForm() {
     }));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const preparedTags = mergeTags(values.tags, tagInput);
-    const productPayload: ProductPayload = {
-      title: values.title.trim(),
-      description: values.description.trim(),
-      slug: generatedSlug,
-      currency: values.currency,
-      price: Number(values.price),
+    const preparedAttributes = values.attributes
+      .map((attribute) => ({
+        key: attribute.key.trim(),
+        value: attribute.value.trim(),
+      }))
+      .filter((attribute) => attribute.key.length > 0);
+    const productPayload: CreateProductBody = {
+      attributes: preparedAttributes,
+      brand: values.brand.trim(),
+      category: values.category.trim(),
+      characteristics: preparedAttributes.map((attribute) => ({
+        label: attribute.key,
+        value: attribute.value,
+      })),
       compareAtPrice:
         values.compareAtPrice.trim() === ""
           ? null
           : Number(values.compareAtPrice),
+      currency: values.currency,
+      description: values.description.trim(),
+      height: values.height.trim(),
+      images: [],
+      length: values.length.trim(),
+      price: Number(values.price),
+      seoDescription: values.seoDescription.trim(),
+      seoTitle: values.seoTitle.trim(),
       sku: values.sku.trim(),
-      stock: Number(values.stock),
-      category: values.category.trim(),
+      slug: generatedSlug,
       status: values.status,
-      brand: values.brand.trim(),
+      stock: Number(values.stock),
       tags: preparedTags,
-      dimensions: {
-        weight: values.weight.trim(),
-        width: values.width.trim(),
-        height: values.height.trim(),
-        length: values.length.trim(),
-      },
-      seo: {
-        title: values.seoTitle.trim(),
-        description: values.seoDescription.trim(),
-      },
-      images: {
-        mainImage: values.mainImage?.file ?? null,
-        gallery: values.galleryImages.map((image) => image.file),
-      },
-      attributes: values.attributes.reduce<Record<string, string>>(
-        (result, attribute) => {
-          const key = attribute.key.trim();
-
-          if (!key) {
-            return result;
-          }
-
-          result[key] = attribute.value.trim();
-          return result;
-        },
-        {},
-      ),
+      title: values.title.trim(),
+      weight: values.weight.trim(),
+      width: values.width.trim(),
     };
 
-    console.log("Created product:", productPayload);
-    setValues((currentValues) => ({
-      ...currentValues,
-      tags: preparedTags,
-    }));
-    setTagInput("");
-    setIsSnackbarOpen(true);
+    try {
+      await createProduct(productPayload);
+      clearFormState(false);
+      setIsSnackbarOpen(true);
+    } catch {
+      setValues((currentValues) => ({
+        ...currentValues,
+        tags: preparedTags,
+      }));
+      setTagInput("");
+    }
   };
 
   const activeStatus =
@@ -460,6 +486,7 @@ export function ProductCreateForm() {
             <Stack direction="row" spacing={1.25}>
               <Button
                 disableElevation
+                disabled={isMutating}
                 onClick={resetForm}
                 sx={buttonSx}
                 type="button"
@@ -469,14 +496,24 @@ export function ProductCreateForm() {
               </Button>
               <Button
                 disableElevation
+                disabled={!hasSession || isMutating}
                 sx={buttonSx}
                 type="submit"
                 variant="contained"
               >
-                Save product
+                {isMutating ? "Saving..." : "Save product"}
               </Button>
             </Stack>
           </Stack>
+
+          {!hasSession ? (
+            <Alert severity="warning">
+              Чтобы создать товар в реальной базе, сначала войди в компанию или
+              под сотрудником.
+            </Alert>
+          ) : null}
+
+          {error ? <Alert severity="error">{error.message}</Alert> : null}
 
           <Grid columnSpacing={2} container rowSpacing={2}>
             <Grid size={{ xs: 12, lg: 8 }}>
@@ -862,7 +899,7 @@ export function ProductCreateForm() {
           sx={{ width: "100%" }}
           variant="filled"
         >
-          Product draft prepared in local state.
+          Product created on the server.
         </Alert>
       </Snackbar>
     </Box>

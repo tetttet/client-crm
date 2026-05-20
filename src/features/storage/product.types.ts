@@ -1,14 +1,6 @@
 export type ProductStatus = "draft" | "active" | "archived";
 
-export type ProductCurrency =
-  | "USD"
-  | "EUR"
-  | "GBP"
-  | "TRY"
-  | "KZT"
-  | "RUB"
-  | "AED"
-  | "CNY";
+export type ProductCurrency = string;
 
 export type ProductCharacteristic = {
   id: string;

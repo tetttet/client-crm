@@ -1,9 +1,10 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState, useTransition } from "react";
+import { useDeferredValue, useState, useTransition } from "react";
 import PictureAsPdfRoundedIcon from "@mui/icons-material/PictureAsPdfRounded";
 import RestartAltRoundedIcon from "@mui/icons-material/RestartAltRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -26,7 +27,14 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
+import { useAuthSession } from "@/hooks/use-auth-session";
+import { useProducts } from "@/hooks/use-products";
+
 import { ProductDetailsDrawer } from "./ProductDetailsDrawer";
+import {
+  mapProductItemToProductMutationBody,
+  mapProductToProductItem,
+} from "./product-mappers";
 import { exportProductsPdfReport } from "./pdf/export-products-pdf-report";
 import {
   DEFAULT_PRODUCT_TABLE_FILTERS,
@@ -43,7 +51,6 @@ import {
   productSortOptions,
   productStockFilterOptions,
 } from "./product-table.utils";
-import { createProductsMock } from "./products.mock";
 import type {
   ProductItem,
   ProductStatusFilter,
@@ -249,26 +256,27 @@ function ProductTableSkeleton() {
 }
 
 export default function ProductTable() {
-  const [products, setProducts] = useState<ProductItem[]>([]);
+  const session = useAuthSession();
+  const {
+    error,
+    isLoading,
+    isMutating,
+    products: productRecords,
+    updateProduct,
+  } = useProducts({
+    initialQuery: {
+      limit: 100,
+    },
+  });
   const [filters, setFilters] = useState<ProductTableFilters>(
     DEFAULT_PRODUCT_TABLE_FILTERS,
   );
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [isPending, startTransition] = useTransition();
   const deferredSearch = useDeferredValue(filters.search);
-
-  useEffect(() => {
-    const timerId = window.setTimeout(() => {
-      setProducts(createProductsMock());
-      setIsBootstrapping(false);
-    }, 0);
-
-    return () => {
-      window.clearTimeout(timerId);
-    };
-  }, []);
+  const hasSession = Boolean(session.accessToken);
+  const products = productRecords.map(mapProductToProductItem);
 
   const selectedProduct =
     products.find((product) => product.id === selectedProductId) ?? null;
@@ -299,17 +307,24 @@ export default function ProductTable() {
     0,
   );
   const categoryOptions = Array.from(
-    new Set(products.map((product) => product.category)),
+    new Set(
+      products
+        .map((product) => product.category.trim())
+        .filter((category) => category.length > 0),
+    ),
   ).sort((leftCategory, rightCategory) => leftCategory.localeCompare(rightCategory));
   const brandOptions = Array.from(
-    new Set(products.map((product) => product.brand)),
+    new Set(
+      products
+        .map((product) => product.brand.trim())
+        .filter((brand) => brand.length > 0),
+    ),
   ).sort((leftBrand, rightBrand) => leftBrand.localeCompare(rightBrand));
 
-  const handleSaveProduct = (updatedProduct: ProductItem) => {
-    setProducts((currentProducts) =>
-      currentProducts.map((product) =>
-        product.id === updatedProduct.id ? updatedProduct : product,
-      ),
+  const handleSaveProduct = async (updatedProduct: ProductItem) => {
+    await updateProduct(
+      updatedProduct.id,
+      mapProductItemToProductMutationBody(updatedProduct),
     );
     setSelectedProductId(updatedProduct.id);
   };
@@ -359,13 +374,21 @@ export default function ProductTable() {
     }
   };
 
-  if (isBootstrapping) {
+  if (isLoading && products.length === 0) {
     return <ProductTableSkeleton />;
   }
 
   return (
     <Box sx={{ bgcolor: "#f5f7fb", pb: { xs: 2, md: 3 } }}>
       <Stack spacing={2.5}>
+        {!hasSession ? (
+          <Alert severity="warning">
+            Чтобы увидеть реальные товары компании, сначала войди в систему.
+          </Alert>
+        ) : null}
+
+        {error ? <Alert severity="error">{error.message}</Alert> : null}
+
         <Paper
           sx={{
             background: "#ffffff",
@@ -410,12 +433,11 @@ export default function ProductTable() {
                   sx={{ color: "#202124", fontWeight: 800, letterSpacing: "-0.03em" }}
                   variant="h4"
                 >
-                  Compact marketplace table with fast filters
+                  Compact marketplace table with live catalog data
                 </Typography>
                 <Typography color="text.secondary" sx={{ maxWidth: 640 }} variant="body1">
-                  Trendyol-inspired density, but adapted to the project&apos;s blue
-                  visual language. Search, filter, inspect, and export the current
-                  product slice to PDF in one place.
+                  Search, filter, inspect, and export the current slice of your
+                  company&apos;s product catalog from the server.
                 </Typography>
               </Stack>
 
@@ -456,13 +478,13 @@ export default function ProductTable() {
               }}
             >
               <CatalogMetricCard
-                helper="Total SKU records in local preview"
+                helper="Total SKU records loaded from the server"
                 label="Products"
                 toneIndex={0}
                 value={String(products.length)}
               />
               <CatalogMetricCard
-                helper="Currently visible in active status"
+                helper="Products currently marked as active"
                 label="Live now"
                 toneIndex={1}
                 value={String(activeProductCount)}
@@ -491,7 +513,7 @@ export default function ProductTable() {
             overflow: "hidden",
           }}
         >
-          {isPending ? (
+          {isPending || isLoading || isMutating ? (
             <LinearProgress
               sx={{
                 "& .MuiLinearProgress-bar": {
@@ -523,8 +545,8 @@ export default function ProductTable() {
                   Products table
                 </Typography>
                 <Typography color="text.secondary" variant="body2">
-                  Compact rows, quick catalog filters, and PDF export for the current
-                  filtered view.
+                  Compact rows, quick catalog filters, and PDF export for the
+                  current filtered server data.
                 </Typography>
               </Stack>
 
@@ -808,7 +830,7 @@ export default function ProductTable() {
                             <Box
                               alt={product.title}
                               component="img"
-                              src={product.images[0]}
+                              src={product.images[0] ?? "/file.svg"}
                               sx={{
                                 bgcolor: "#eef4fb",
                                 border: "1px solid #d7dce3",
@@ -1002,9 +1024,9 @@ export default function ProductTable() {
                           No products match these filters
                         </Typography>
                         <Typography color="text.secondary" sx={{ maxWidth: 460 }} variant="body2">
-                          Try resetting filters or broadening the search query. The
-                          table keeps the current structure ready for larger datasets
-                          without loading extra UI noise.
+                          Try resetting filters or broadening the search query.
+                          If the catalog is empty, add products on the create
+                          page and they will appear here from the server.
                         </Typography>
                         <Button
                           disableElevation
